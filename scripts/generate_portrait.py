@@ -3,9 +3,10 @@ import os
 import urllib.request
 import numpy as np
 import cv2
+from rembg import remove
 from PIL import Image
 
-# 1. Download JetBrains Mono font subset if not local
+# 1. Download Font
 FONT_URL = "https://raw.githubusercontent.com/andriidrok1/andriidrok1/main/fonts/ramp.woff2"
 font_path = "ramp.woff2"
 
@@ -18,51 +19,58 @@ if not os.path.exists(font_path):
 # Settings
 COLS = 95
 DISPLAY_WIDTH = 460
-# ' ' space is first so transparent background areas remain completely empty
 RAMP = ' .`:-=+*cs#%@'
 
-# 2. Load PNG Image with Alpha Channel
+# 2. Find Image
 image_file = None
-for name in ["photo.png", "photo.PNG", "photo.jpg"]:
+for name in ["photo.png", "photo.PNG", "photo.jpg", "photo.jpeg"]:
     if os.path.exists(name):
         image_file = name
         break
 
 if not image_file:
-    raise FileNotFoundError("Could not find photo.png in repository root")
+    raise FileNotFoundError("Could not find photo file in root directory.")
 
 print(f"Loading image: {image_file}")
-img = Image.open(image_file).convert("RGBA")
+raw_img = Image.open(image_file)
 
-# Extract RGB and Alpha channels
-arr = np.array(img)
-rgb, alpha = arr[:, :, :3], arr[:, :, 3]
+# Remove background cleanly
+img_no_bg = remove(raw_img)
+
+# Convert to numpy array
+arr = np.array(img_no_bg)
+
+# If image has 3 channels (RGB), add full alpha
+if arr.shape[2] == 3:
+    alpha = np.full((arr.shape[0], arr.shape[1]), 255, dtype=np.uint8)
+    rgb = arr
+else:
+    rgb = arr[:, :, :3]
+    alpha = arr[:, :, 3]
 
 # Convert RGB to Grayscale
 gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
 
-# FORCE all transparent/background pixels (alpha < 128) to pure white (255)
-# In RAMP, 255 maps directly to ' ' (blank space)
-gray[alpha < 128] = 255
-
-# Apply CLAHE local contrast enhancement ONLY to visible subject
-clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-gray = clahe.apply(gray)
-
-# Slight contrast adjustment for clear facial features
-gray = np.power(gray / 255.0, 1.1) * 255.0
-
-# Re-apply transparent background mask after contrast adjustment
-gray[alpha < 128] = 255
-
-# Downscale image to match character aspect ratio
+# Downscale gray image AND alpha mask together to match target grid size
 rows = int(COLS * (gray.shape[0] / gray.shape[1]) * 0.48)
-resized = cv2.resize(gray, (COLS, rows), interpolation=cv2.INTER_AREA)
+gray_resized = cv2.resize(gray, (COLS, rows), interpolation=cv2.INTER_AREA)
+alpha_resized = cv2.resize(alpha, (COLS, rows), interpolation=cv2.INTER_AREA)
+
+# Contrast adjustment ONLY on non-transparent subject pixels
+bg_mask = alpha_resized < 100
+gray_resized[bg_mask] = 255  # Set background to max value (255)
+
+# Equalize contrast for subject
+clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+subject_enhanced = clahe.apply(gray_resized)
+
+# Re-apply strict background override AFTER CLAHE (CLAHE modifies all values)
+subject_enhanced[bg_mask] = 255
 
 # Map pixels to character ramp
 ramp_len = len(RAMP)
 lines = []
-for row in resized:
+for row in subject_enhanced:
     line = "".join(RAMP[min(int(val / 256 * ramp_len), ramp_len - 1)] for val in row)
     lines.append(line)
 
@@ -108,4 +116,4 @@ svg.append('</svg>')
 with open("portrait.svg", "w", encoding="utf-8") as f:
     f.write("\n".join(svg))
 
-print("Successfully generated portrait.svg")
+print("Successfully regenerated portrait.svg with transparent background")
