@@ -3,7 +3,6 @@ import os
 import urllib.request
 import numpy as np
 import cv2
-from rembg import remove
 from PIL import Image
 
 # 1. Download JetBrains Mono font subset if not local
@@ -17,44 +16,46 @@ if not os.path.exists(font_path):
         print(f"Warning: Could not download font: {e}")
 
 # Settings
-COLS = 90
+COLS = 95
 DISPLAY_WIDTH = 460
+# ' ' space is first so transparent background areas remain completely empty
 RAMP = ' .`:-=+*cs#%@'
 
-# 2. Load Image (Supports both PNG and JPG automatically)
+# 2. Load PNG Image with Alpha Channel
 image_file = None
-for name in ["photo.png", "photo.jpg", "photo.jpeg", "photo.PNG", "photo.JPG"]:
+for name in ["photo.png", "photo.PNG", "photo.jpg"]:
     if os.path.exists(name):
         image_file = name
         break
 
 if not image_file:
-    raise FileNotFoundError("Could not find photo.png or photo.jpg in the repository root directory.")
+    raise FileNotFoundError("Could not find photo.png in repository root")
 
-print(f"Loading image from: {image_file}")
+print(f"Loading image: {image_file}")
 img = Image.open(image_file).convert("RGBA")
 
-# Remove background
-img_no_bg = remove(img)
-
-# Extract channels
-arr = np.array(img_no_bg)
+# Extract RGB and Alpha channels
+arr = np.array(img)
 rgb, alpha = arr[:, :, :3], arr[:, :, 3]
 
 # Convert RGB to Grayscale
 gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
 
-# Force transparent/background pixels to pure white (255) so they turn into spaces (' ')
+# FORCE all transparent/background pixels (alpha < 128) to pure white (255)
+# In RAMP, 255 maps directly to ' ' (blank space)
 gray[alpha < 128] = 255
 
-# Local contrast enhancement (CLAHE)
+# Apply CLAHE local contrast enhancement ONLY to visible subject
 clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 gray = clahe.apply(gray)
 
-# Slight gamma adjustment for midtone facial detail
-gray = np.power(gray / 255.0, 1.2) * 255.0
+# Slight contrast adjustment for clear facial features
+gray = np.power(gray / 255.0, 1.1) * 255.0
 
-# Downscale to character grid
+# Re-apply transparent background mask after contrast adjustment
+gray[alpha < 128] = 255
+
+# Downscale image to match character aspect ratio
 rows = int(COLS * (gray.shape[0] / gray.shape[1]) * 0.48)
 resized = cv2.resize(gray, (COLS, rows), interpolation=cv2.INTER_AREA)
 
@@ -107,4 +108,4 @@ svg.append('</svg>')
 with open("portrait.svg", "w", encoding="utf-8") as f:
     f.write("\n".join(svg))
 
-print("Generated portrait.svg successfully.")
+print("Successfully generated portrait.svg")
