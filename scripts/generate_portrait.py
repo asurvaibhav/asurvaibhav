@@ -7,7 +7,7 @@ from rembg import remove
 from PIL import Image
 
 # 1. Download JetBrains Mono font subset if not local
-FONT_URL = "https://raw.githubusercontent.com/andriidrok1/andriidrok1/main/ramp.woff2"
+FONT_URL = "https://raw.githubusercontent.com/andriidrok1/andriidrok1/main/fonts/ramp.woff2"
 font_path = "ramp.woff2"
 
 if not os.path.exists(font_path):
@@ -21,19 +21,38 @@ COLS = 90
 DISPLAY_WIDTH = 460
 RAMP = ' .`:-=+*cs#%@'
 
-# 2. Process Image
-img = Image.open("photo.jpg").convert("RGB")
+# 2. Load Image (Supports both PNG and JPG automatically)
+image_file = None
+for name in ["photo.png", "photo.jpg", "photo.jpeg", "photo.PNG", "photo.JPG"]:
+    if os.path.exists(name):
+        image_file = name
+        break
+
+if not image_file:
+    raise FileNotFoundError("Could not find photo.png or photo.jpg in the repository root directory.")
+
+print(f"Loading image from: {image_file}")
+img = Image.open(image_file).convert("RGBA")
+
+# Remove background
 img_no_bg = remove(img)
 
+# Extract channels
 arr = np.array(img_no_bg)
 rgb, alpha = arr[:, :, :3], arr[:, :, 3]
-gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-gray[alpha == 0] = 255  # Force background to white
 
-# Contrast & Curve Adjustments
-clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+# Convert RGB to Grayscale
+gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+
+# Force transparent/background pixels to pure white (255) so they turn into spaces (' ')
+gray[alpha < 128] = 255
+
+# Local contrast enhancement (CLAHE)
+clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 gray = clahe.apply(gray)
-gray = np.power(gray / 255.0, 1.7) * 255.0  # Darkening curve
+
+# Slight gamma adjustment for midtone facial detail
+gray = np.power(gray / 255.0, 1.2) * 255.0
 
 # Downscale to character grid
 rows = int(COLS * (gray.shape[0] / gray.shape[1]) * 0.48)
