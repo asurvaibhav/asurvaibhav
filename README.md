@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="./portrait.svg" alt="Self-typing ASCII Portrait" width="460" />
+  <img src="./portrait.svg?v=2" alt="Self-typing ASCII Portrait" width="460" />
 </p>
 
 <p align="center">
-  <img src="./stats.svg" alt="Contribution Stats" />
+  <img src="./stats.svg?v=2" alt="Contribution Stats" />
 </p>
